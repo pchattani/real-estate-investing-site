@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Real Estate Investing</title>
+<meta name="description" content="Global residential real estate analytics: repeat-sales indices to neighbourhood level, sold records, liquidity, valuation, and a global read.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="assets/base.css">
+<link rel="stylesheet" href="assets/rei.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/">Real Estate <span>Investing</span></a>
+  <nav id="nav">
+    <a href="#/">Cities</a>
+    <a href="#/countries">Countries</a>
+    <a href="#/methodology">Methodology</a>
+  </nav>
+  <div class="search"><input id="q" type="search" placeholder="Search area or postcode district" autocomplete="off"><div id="q-results" class="q-results"></div></div>
+</header>
+<main id="app"><div class="loading">Loading…</div></main>
+<footer class="foot"><span id="attribution"></span></footer>
+<script src="assets/js/core.js"></script>
+<script src="assets/js/charts.js"></script>
+<script src="assets/js/map.js"></script>
+<script src="assets/js/pages.js"></script>
+<script src="assets/js/country.js"></script>
+<script>REI.start();</script>
+</body>
+</html>
