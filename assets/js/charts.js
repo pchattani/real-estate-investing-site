@@ -9,6 +9,11 @@ REI.charts = (function () {
   };
   const cfg = { displayModeBar: false, responsive: true };
   const merge = (a, b) => Object.assign({}, a, b, { xaxis: Object.assign({}, a.xaxis, b.xaxis || {}), yaxis: Object.assign({}, a.yaxis, b.yaxis || {}) });
+  /* If the charting library failed to load, show a notice in the chart slot instead of throwing and blanking the page. */
+  const Plotly = new Proxy({}, { get: (_, k) => (window.Plotly && window.Plotly[k]) ? window.Plotly[k].bind(window.Plotly) : (div) => {
+    const d = typeof div === 'string' ? document.getElementById(div) : div;
+    if (d) d.innerHTML = '<p class="note">Chart library did not load (network or content blocker). Data and tables are unaffected; reload to retry.</p>';
+  } });
 
   /* Index line with a shaded ±1.96 SE band (SE is in log points: band = value*exp(±1.96 se)) and the provisional tail dashed. */
   function index(div, idx, provFrom, opts = {}) {

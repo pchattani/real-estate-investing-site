@@ -94,6 +94,16 @@ window.REI = (function () {
     q.addEventListener('focus', () => { if (q.value.trim()) out.style.display = 'block'; });
   }
 
+  /* Same guard for pages that call Plotly directly (country.js, liquidity and tiers blocks in pages.js). */
+  if (typeof window.Plotly === 'undefined') {
+    window.addEventListener('load', () => {
+      if (typeof window.Plotly === 'undefined') window.Plotly = { newPlot(div) {
+        const d = typeof div === 'string' ? document.getElementById(div) : div;
+        if (d) d.innerHTML = '<p class="note">Chart library did not load (network or content blocker). Data and tables are unaffected; reload to retry.</p>';
+      } };
+    });
+  }
+
   async function start() {
     state.meta = await getJSON('meta.json');
     setupSearch();
