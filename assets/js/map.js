@@ -11,6 +11,7 @@ REI.map = (function () {
   }
   function layerToGeoJSON(layer, metric) {
     const feats = [];
+    if (!layer[metric]) return { type: 'FeatureCollection', features: feats };
     for (let i = 0; i < layer.h3.length; i++) {
       const v = layer[metric][i];
       if (v == null) continue;
@@ -21,6 +22,7 @@ REI.map = (function () {
   function quantiles(vals, qs) { const s = vals.filter(v => v != null && isFinite(v)).sort((a, b) => a - b); return qs.map(q => s[Math.min(s.length - 1, Math.floor(q * s.length))]); }
 
   const PALETTES = {
+    psm12: ['#1d4877', '#2e6fa5', '#58a6ff', '#9ecbff', '#ffd27f', '#f0883e', '#f85149', '#b62324'],
     med12: ['#1d4877', '#2e6fa5', '#58a6ff', '#9ecbff', '#ffd27f', '#f0883e', '#f85149', '#b62324'],
     chg: ['#b62324', '#f85149', '#f0883e', '#ffd27f', '#cfd8dc', '#8ddc9b', '#3fb950', '#1a7f37'],
     n12: ['#1d4877', '#2e6fa5', '#58a6ff', '#9ecbff', '#c8e1ff'],
@@ -57,8 +59,8 @@ REI.map = (function () {
         map.on('mouseleave', 'hex-fill', () => { popup.remove(); map.getCanvas().style.cursor = ''; });
       }
       if (legendEl) {
-        const fmtv = v => metric === 'chg' ? REI.fmt.pct(v, 0) : metric === 'n12' ? REI.fmt.num(v) : REI.fmt.moneyK(v, city.currency);
-        legendEl.innerHTML = `<span>${{ med12: 'Median price, 12m', chg: 'Median change vs prior 12m', n12: 'Sales, 12m' }[metric]}</span>` +
+        const fmtv = v => metric === 'chg' ? REI.fmt.pct(v, 0) : metric === 'n12' ? REI.fmt.num(v) : metric === 'psm12' ? REI.fmt.money(v, city.currency) + '/m²' : REI.fmt.moneyK(v, city.currency);
+        legendEl.innerHTML = `<span>${{ med12: 'Median price, 12m', psm12: 'Median per m², 12m', chg: 'Median change vs prior 12m', n12: 'Sales, 12m' }[metric]}</span>` +
           pal.map((c, i) => `<i style="background:${c}" title="${i ? fmtv(breaks[i - 1]) : ''}"></i>`).join('') + `<span>${fmtv(breaks[0])} → ${fmtv(breaks[breaks.length - 1])}</span>`;
       }
     }
@@ -69,12 +71,12 @@ REI.map = (function () {
       setMetric(m) { metric = m; draw(); },
       fitBounds(b) { map.fitBounds(b, { padding: 20, duration: 0 }); },
       addPoints(rows, cur) {
-        const gj = { type: 'FeatureCollection', features: rows.filter(r => r.lat != null).map(r => ({ type: 'Feature', properties: { p: r.p, d: r.d, a: r.a, pc: r.pc, pk: r.pk, t: r.t }, geometry: { type: 'Point', coordinates: [r.lon, r.lat] } })) };
+        const gj = { type: 'FeatureCollection', features: rows.filter(r => r.lat != null).map(r => ({ type: 'Feature', properties: { p: r.p, d: r.d, a: r.a, pc: r.pc, pk: r.pk, t: r.t, sd: r.sd }, geometry: { type: 'Point', coordinates: [r.lon, r.lat] } })) };
         const add = () => {
           if (map.getSource('pts')) { map.getSource('pts').setData(gj); return; }
           map.addSource('pts', { type: 'geojson', data: gj });
           map.addLayer({ id: 'pts', type: 'circle', source: 'pts', minzoom: 13, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 16, 6], 'circle-color': '#ffd27f', 'circle-stroke-color': '#0d1117', 'circle-stroke-width': 0.6, 'circle-opacity': 0.85 } });
-          map.on('click', 'pts', e => { const p = e.features[0].properties; location.hash = `#/sold/${cityKey}/${encodeURIComponent(p.pc.split(' ')[0])}/${p.pk}`; });
+          map.on('click', 'pts', e => { const p = e.features[0].properties; location.hash = `#/sold/${cityKey}/${encodeURIComponent(p.sd)}/${p.pk}`; });
           map.on('mouseenter', 'pts', () => (map.getCanvas().style.cursor = 'pointer'));
           map.on('mouseleave', 'pts', () => (map.getCanvas().style.cursor = ''));
         };
