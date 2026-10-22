@@ -37,14 +37,32 @@
   route('/', async (app) => {
     const cities = await Promise.all(REI.state.meta.cities.map(c => REI.city(c.key)));
     app.innerHTML = `<h1>Cities</h1><p class="sub">Sold-price analytics from open registers. Repeat-sales indices to postcode-district level, honest about what is still provisional.</p>
-      <div class="cities">${cities.map(s => `<a class="city-card" href="#/city/${s.key}"><div class="n">${esc(s.name)}</div><div class="m">${s.tier === 'A1' ? 'Address-level sold records' : 'Index only'} · through ${fmt.month(s.data_through)}</div>
-        <div class="tiles" style="margin:.5rem 0 0"><div class="tile"><div class="k">12m</div><div class="v ${s.changes.m12 >= 0 ? 'up' : 'down'}">${fmt.pct(s.changes.m12)}</div></div><div class="tile"><div class="k">Sales 12m</div><div class="v">${fmt.num(s.counts.sales_12m)}</div></div></div></a>`).join('')}</div>`;
+      <div class="cities">${cities.map(s => `<a class="city-card" href="#/city/${s.key}"><div class="n">${esc(s.name)}</div><div class="m">${s.tier === 'A1' ? 'Address-level sold records' : s.tier === 'A2' ? 'Sold records, area-level' : 'Index only (asking prices)'} · through ${s.tier === 'B' ? s.data_through : fmt.month(s.data_through)}</div>
+        <div class="tiles" style="margin:.5rem 0 0"><div class="tile"><div class="k">12m</div><div class="v ${s.changes.m12 >= 0 ? 'up' : 'down'}">${fmt.pct(s.changes.m12)}</div></div><div class="tile"><div class="k">${s.tier === 'B' ? 'Barrios' : 'Sales 12m'}</div><div class="v">${fmt.num(s.tier === 'B' ? s.counts.areas : s.counts.sales_12m)}</div></div></div></a>`).join('')}</div>`;
     document.getElementById('attribution').textContent = cities.map(c => c.attribution).filter(Boolean).join(' ');
   });
 
-  // ------------------------------------------------------------ city
+  // ------------------------------------------------------------ city (tier B: index-only page)
+  function tierB(app, key, s) {
+    const rows = s.areas.slice().sort((a, b) => (b.psm12 || 0) - (a.psm12 || 0));
+    app.innerHTML = `<div class="crumbs"><a href="#/">Cities</a> › ${esc(s.name)}</div>
+      <div class="city-head"><h1>${esc(s.name)}</h1><span class="asof"><span class="badge prov">Index-only: ${esc(s.basis)}</span><span class="badge">Data through ${s.data_through}</span><span class="badge">Published ${s.as_of}</span></span></div>
+      <div class="tiles">${[['3 months', s.changes.m3], ['12 months', s.changes.m12], ['5 years', s.changes.y5], ['10 years', s.changes.y10]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v ${v == null ? '' : v >= 0 ? 'up' : 'down'}">${fmt.pct(v)}</div><div class="s">asking price per m², fixed weights</div></div>`).join('')}
+        <div class="tile"><div class="k">Barrios</div><div class="v">${s.counts.areas}</div><div class="s">2 and 3 room used apartments</div></div></div>
+      <div class="grid2"><div class="card"><h2>Asking price per m² (USD), fixed-weight index</h2><div id="c-index" class="chart"></div></div>
+        <div class="card"><h2>Asking rent (ARS per month), fixed-weight index</h2><div id="c-rent" class="chart"></div></div></div>
+      <div class="card" style="margin-top:1rem"><h2>Barrios, latest quarter</h2><table class="t"><thead><tr><th>Barrio</th><th>Comuna</th><th>Asking USD/m²</th><th>vs year ago</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td><a href="#/area/${key}/${encodeURIComponent(r.code)}">${esc(r.name)}</a></td><td>${esc(r.parent || '')}</td><td>${r.psm12 == null ? '–' : '$' + Math.round(r.psm12).toLocaleString('en-US')}</td><td class="${fmt.cls(r.psm12_chg)}">${fmt.pct(r.psm12_chg)}</td></tr>`).join('')}</tbody></table>
+        <p class="note">Asking prices from listings, not sold prices: there is no open deed-level register for Buenos Aires. Prices are quoted in US dollars; rents in pesos under high inflation, so the rent index is nominal.</p></div>`;
+    REI.charts.index(document.getElementById('c-index'), { period: s.index.period.map(p => p.replace(/Q(\d)$/, (m, q) => `-${(q * 3).toString().padStart(2, '0')}`)), value: s.index.value, se: [] }, null, { base: s.base_period, name: 'Asking price per m² (USD)' });
+    if (s.rent) REI.charts.index(document.getElementById('c-rent'), { period: s.rent.period, value: s.rent.value, se: [] }, null, { base: s.rent.period[0], name: 'Asking rent (ARS)' });
+    else document.getElementById('c-rent').innerHTML = '<p class="note">No rent series.</p>';
+    document.getElementById('attribution').textContent = s.attribution;
+  }
+
   route('/city/:key', async (app, { key }) => {
     const s = await REI.city(key);
+    if (s.tier === 'B') return tierB(app, key, s);
     const top = s.levels[0].key;
     app.innerHTML = `<div class="crumbs"><a href="#/">Cities</a> › ${esc(s.name)}</div>
       <div class="city-head"><h1>${esc(s.name)}</h1><span class="asof">${banner(s)}</span></div>
@@ -102,6 +120,17 @@
   // ------------------------------------------------------------ area
   route('/area/:key/:code', async (app, { key, code }) => {
     const [s, a] = await Promise.all([REI.city(key), REI.area(key, code)]);
+    if (s.tier === 'B') {
+      app.innerHTML = `<div class="crumbs"><a href="#/">Cities</a> › <a href="#/city/${key}">${esc(s.name)}</a> › ${esc(a.name)}</div>
+        <div class="city-head"><h1>${esc(a.name)}</h1><span class="asof"><span class="badge">${esc(a.parent ? a.parent.name : '')}</span><span class="badge prov">${esc(a.basis || s.basis)}</span></span></div>
+        <div class="tiles"><div class="tile"><div class="k">Asking USD/m²</div><div class="v">${a.psm12 == null ? '–' : '$' + Math.round(a.psm12).toLocaleString('en-US')}</div><div class="s">latest quarter</div></div>
+          ${a.changes ? [['12 months', a.changes.m12], ['5 years', a.changes.y5]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v ${v == null ? '' : v >= 0 ? 'up' : 'down'}">${fmt.pct(v)}</div></div>`).join('') : ''}</div>
+        <div class="card"><h2>Asking price per m² vs ${esc(s.name)}</h2><div id="a-index" class="chart"></div></div>`;
+      const q2m = p => p.replace(/Q(\d)$/, (m, q) => `-${(q * 3).toString().padStart(2, '0')}`);
+      if (a.index) REI.charts.index(document.getElementById('a-index'), { period: a.index.period.map(q2m), value: a.index.value, se: [] }, null, { base: a.index.period[0], name: a.name, compare: [{ period: s.index.period.map(q2m), value: s.index.value, name: s.name }] });
+      document.getElementById('attribution').textContent = s.attribution;
+      return;
+    }
     const crumbs = [`<a href="#/">Cities</a>`, `<a href="#/city/${key}">${esc(s.name)}</a>`];
     if (a.parent) crumbs.push(`<a href="#/area/${key}/${encodeURIComponent(a.parent.code)}">${esc(a.parent.name)}</a>`);
     const lvName = (s.levels.find(l => l.key === a.level) || {}).name || a.level;
@@ -109,7 +138,7 @@
     app.innerHTML = `<div class="crumbs">${crumbs.join(' › ')} › ${esc(a.name)}</div>
       <div class="city-head"><h1>${esc(a.name)}${a.name !== a.code ? ` <span class="mute mono">${esc(a.code)}</span>` : ''}</h1><span class="asof"><span class="badge">${esc(lvName)}</span>${banner(s)}</span></div>
       ${a.changes ? tiles(a.changes, [`<div class="tile"><div class="k">Sales 12m</div><div class="v">${fmt.num(a.n12)}</div><div class="s">median ${fmt.money(a.med12, s.currency)}</div></div>`,
-        `<div class="tile"><div class="k">Own-data weight</div><div class="v">${shrink == null ? '–' : (100 * shrink).toFixed(0) + '%'}</div><div class="s">rest borrowed from ${a.parent ? esc(a.parent.name) : 'city'}</div></div>`]) : ''}
+        `<div class="tile"><div class="k">Own-data weight</div><div class="v">${shrink == null ? '–' : (100 * shrink).toFixed(0) + '%'}</div><div class="s">rest borrowed from ${a.parent ? esc(a.parent.name) : 'city'}${a.index && a.index.window > 1 ? ` · ${a.index.window}-month window` : ''}</div></div>`]) : ''}
       <div class="grid2"><div class="card"><h2>Repeat-sales index vs ${esc(s.name)}</h2><div id="a-index" class="chart"></div></div>
         <div class="card"><h2>Map</h2><div class="map-ctl"><span class="legend" id="legend"></span></div><div id="map" class="map" style="height:360px"></div></div></div>
       <div id="children" style="margin-top:1rem"></div>
