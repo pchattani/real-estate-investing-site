@@ -2,14 +2,20 @@
 window.REI = (function () {
   const state = { meta: null, cities: {}, areas: {}, sales: {}, h3: {}, route: null };
   const DATA = 'data/';
+  // sold-record cities are served from regional data repos (their own Pages sites); meta.json carries each base
+  function url(path) {
+    const m = /^cities\/([^/]+)\//.exec(path);
+    if (m && state.meta) { const c = state.meta.cities.find(x => x.key === m[1]); if (c && c.base) return c.base + path; }
+    return DATA + path;
+  }
 
   async function getJSON(path) {
-    const r = await fetch(DATA + path, { cache: 'no-cache' });
+    const r = await fetch(url(path), { cache: 'no-cache' });
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return r.json();
   }
   async function getGz(path) {
-    const r = await fetch(DATA + path, { cache: 'no-cache' });
+    const r = await fetch(url(path), { cache: 'no-cache' });
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     // GitHub Pages serves .gz as-is (content-encoding not set), so decompress client-side.
     const ct = r.headers.get('content-type') || '';

@@ -37,10 +37,13 @@ REI.charts = (function () {
     const colors = p.map((_, i) => i >= k ? 'rgba(210,153,34,0.7)' : 'rgba(88,166,255,0.55)');
     const traces = [
       { x: p, y: vol.n, type: 'bar', marker: { color: colors }, name: 'Sales (month)', hovertemplate: '%{y:,} sales<extra></extra>' },
-      { x: p, y: vol.median, type: 'scatter', mode: 'lines', yaxis: 'y2', line: { color: '#3fb950', width: 1.5 }, name: 'Median price', hovertemplate: '%{y:,.0f}<extra></extra>' },
     ];
-    Plotly.newPlot(div, traces, merge(base, { yaxis: { title: { text: 'Sales per month' } }, xaxis: { type: 'date' },
-      yaxis2: { overlaying: 'y', side: 'right', gridcolor: 'rgba(0,0,0,0)', title: { text: `Median (${cur})` }, tickformat: '~s' } }), cfg);
+    const layout = { yaxis: { title: { text: 'Sales per month' } }, xaxis: { type: 'date' } };
+    if (vol.median) {
+      traces.push({ x: p, y: vol.median, type: 'scatter', mode: 'lines', yaxis: 'y2', line: { color: '#3fb950', width: 1.5 }, name: 'Median price', hovertemplate: '%{y:,.0f}<extra></extra>' });
+      layout.yaxis2 = { overlaying: 'y', side: 'right', gridcolor: 'rgba(0,0,0,0)', title: { text: `Median (${cur})` }, tickformat: '~s' };
+    }
+    Plotly.newPlot(div, traces, merge(base, layout), cfg);
   }
 
   /* Horizontal bar ranking. */

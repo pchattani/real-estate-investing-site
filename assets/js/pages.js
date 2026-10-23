@@ -37,26 +37,40 @@
   route('/', async (app) => {
     const cities = await Promise.all(REI.state.meta.cities.map(c => REI.city(c.key)));
     app.innerHTML = `<h1>Cities</h1><p class="sub">Sold-price analytics from open registers. Repeat-sales indices to postcode-district level, honest about what is still provisional.</p>
-      <div class="cities">${cities.map(s => `<a class="city-card" href="#/city/${s.key}"><div class="n">${esc(s.name)}</div><div class="m">${s.tier === 'A1' ? 'Address-level sold records' : s.tier === 'A2' ? 'Sold records, area-level' : 'Index only (asking prices)'} · through ${s.tier === 'B' ? s.data_through : fmt.month(s.data_through)}</div>
-        <div class="tiles" style="margin:.5rem 0 0"><div class="tile"><div class="k">12m</div><div class="v ${s.changes.m12 >= 0 ? 'up' : 'down'}">${fmt.pct(s.changes.m12)}</div></div><div class="tile"><div class="k">${s.tier === 'B' ? 'Barrios' : 'Sales 12m'}</div><div class="v">${fmt.num(s.tier === 'B' ? s.counts.areas : s.counts.sales_12m)}</div></div></div></a>`).join('')}</div>`;
+      <div class="cities">${cities.map(s => `<a class="city-card" href="#/city/${s.key}"><div class="n">${esc(s.name)}</div><div class="m">${s.tier === 'A1' ? 'Address-level sold records' : s.tier === 'A2' ? 'Sold records, area-level' : (s.basis && s.basis.startsWith('official') ? 'Index only (official index)' : 'Index only (asking prices)')} · through ${s.tier === 'B' ? s.data_through : fmt.month(s.data_through)}</div>
+        <div class="tiles" style="margin:.5rem 0 0"><div class="tile"><div class="k">12m</div><div class="v ${s.changes.m12 >= 0 ? 'up' : 'down'}">${fmt.pct(s.changes.m12)}</div></div><div class="tile"><div class="k">${s.tier === 'B' ? (s.levels[0].name + 's') : 'Sales 12m'}</div><div class="v">${fmt.num(s.tier === 'B' ? s.counts.areas : s.counts.sales_12m)}</div></div></div></a>`).join('')}</div>`;
     document.getElementById('attribution').textContent = cities.map(c => c.attribution).filter(Boolean).join(' ');
   });
 
   // ------------------------------------------------------------ city (tier B: index-only page)
+  const q2m = p => p.replace(/Q(\d)$/, (m, q) => `-${(q * 3).toString().padStart(2, '0')}`);
   function tierB(app, key, s) {
-    const rows = s.areas.slice().sort((a, b) => (b.psm12 || 0) - (a.psm12 || 0));
+    const am = s.area_metric || { key: 'psm12', label: 'Asking USD/m²', change_key: 'psm12_chg', change_label: 'vs year ago' };
+    const fmtMetric = v => v == null ? '–' : am.key === 'psm12' ? '$' + Math.round(v).toLocaleString('en-US') : v.toFixed(1);
+    const rows = s.areas.slice().sort((a, b) => (b[am.key] || 0) - (a[am.key] || 0));
+    const lv = s.levels[0];
+    const monthly = s.freq === 'M';
     app.innerHTML = `<div class="crumbs"><a href="#/">Cities</a> › ${esc(s.name)}</div>
       <div class="city-head"><h1>${esc(s.name)}</h1><span class="asof"><span class="badge prov">Index-only: ${esc(s.basis)}</span><span class="badge">Data through ${s.data_through}</span><span class="badge">Published ${s.as_of}</span></span></div>
-      <div class="tiles">${[['3 months', s.changes.m3], ['12 months', s.changes.m12], ['5 years', s.changes.y5], ['10 years', s.changes.y10]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v ${v == null ? '' : v >= 0 ? 'up' : 'down'}">${fmt.pct(v)}</div><div class="s">asking price per m², fixed weights</div></div>`).join('')}
-        <div class="tile"><div class="k">Barrios</div><div class="v">${s.counts.areas}</div><div class="s">2 and 3 room used apartments</div></div></div>
-      <div class="grid2"><div class="card"><h2>Asking price per m² (USD), fixed-weight index</h2><div id="c-index" class="chart"></div></div>
-        <div class="card"><h2>Asking rent (ARS per month), fixed-weight index</h2><div id="c-rent" class="chart"></div></div></div>
-      <div class="card" style="margin-top:1rem"><h2>Barrios, latest quarter</h2><table class="t"><thead><tr><th>Barrio</th><th>Comuna</th><th>Asking USD/m²</th><th>vs year ago</th></tr></thead><tbody>
-        ${rows.map(r => `<tr><td><a href="#/area/${key}/${encodeURIComponent(r.code)}">${esc(r.name)}</a></td><td>${esc(r.parent || '')}</td><td>${r.psm12 == null ? '–' : '$' + Math.round(r.psm12).toLocaleString('en-US')}</td><td class="${fmt.cls(r.psm12_chg)}">${fmt.pct(r.psm12_chg)}</td></tr>`).join('')}</tbody></table>
-        <p class="note">Asking prices from listings, not sold prices: there is no open deed-level register for Buenos Aires. Prices are quoted in US dollars; rents in pesos under high inflation, so the rent index is nominal.</p></div>`;
-    REI.charts.index(document.getElementById('c-index'), { period: s.index.period.map(p => p.replace(/Q(\d)$/, (m, q) => `-${(q * 3).toString().padStart(2, '0')}`)), value: s.index.value, se: [] }, null, { base: s.base_period, name: 'Asking price per m² (USD)' });
+      <div class="tiles">${[['1 month', s.changes.m1], ['3 months', s.changes.m3], ['12 months', s.changes.m12], ['5 years', s.changes.y5], ['10 years', s.changes.y10]].filter(([k, v]) => v !== undefined && !(k === '1 month' && v == null)).map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v ${v == null ? '' : v >= 0 ? 'up' : 'down'}">${fmt.pct(v)}</div><div class="s">${esc(s.basis)}</div></div>`).join('')}
+        <div class="tile"><div class="k">${esc(lv.name)}s</div><div class="v">${s.counts.areas}</div></div></div>
+      <div class="grid2"><div class="card"><h2>${esc(s.basis)} (${s.base_period} = 100)</h2><div id="c-index" class="chart"></div></div>
+        <div class="card"><h2>${s.rent ? 'Asking rent (ARS per month), fixed-weight index' : (lv.name + 's vs ' + esc(s.name))}</h2><div id="c-rent" class="chart"></div></div></div>
+      <div class="card" style="margin-top:1rem"><h2>${esc(lv.name)}s, latest</h2><table class="t"><thead><tr><th>${esc(lv.name)}</th>${rows.some(r => r.parent) ? '<th>Parent</th>' : ''}<th>${esc(am.label)}</th><th>${esc(am.change_label)}</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td><a href="#/area/${key}/${encodeURIComponent(r.code)}">${esc(r.name)}</a></td>${rows.some(x => x.parent) ? `<td>${esc(r.parent || '')}</td>` : ''}<td>${fmtMetric(r[am.key])}</td><td class="${fmt.cls(r[am.change_key])}">${fmt.pct(r[am.change_key])}</td></tr>`).join('')}</tbody></table>
+        <p class="note">${s.key === 'buenos_aires' ? 'Asking prices from listings, not sold prices: there is no open deed-level register for Buenos Aires. Prices are quoted in US dollars; rents in pesos under high inflation, so the rent index is nominal.' : 'An official index, not a register of sales: no sold records, no map. See the Methodology page for what an index-only city can and cannot show.'}</p></div>
+      ${s.volume ? `<div class="card" style="margin-top:1rem"><h2>Deeds registered per month</h2><div id="c-vol" class="chart"></div><p class="note">${esc(s.volume.basis || '')}. Counts only: the register publishes no prices.</p></div>` : ''}
+      ${s.long_index ? `<div class="card" style="margin-top:1rem"><h2>Long history, quarterly (${s.long_index.base_period} = 100)</h2><div id="c-long" class="chart"></div><p class="note">${esc(s.long_index.basis || '')}</p></div>` : ''}`;
+    if (s.volume) REI.charts.volume(document.getElementById('c-vol'), s.volume, s.currency, null);
+    if (s.long_index) REI.charts.index(document.getElementById('c-long'), { period: s.long_index.period.map(q2m), value: s.long_index.value, se: [] }, null, { base: s.long_index.base_period, name: s.name });
+    REI.charts.index(document.getElementById('c-index'), { period: monthly ? s.index.period : s.index.period.map(q2m), value: s.index.value, se: [] }, null, { base: s.base_period, name: s.basis });
     if (s.rent) REI.charts.index(document.getElementById('c-rent'), { period: s.rent.period, value: s.rent.value, se: [] }, null, { base: s.rent.period[0], name: 'Asking rent (ARS)' });
-    else document.getElementById('c-rent').innerHTML = '<p class="note">No rent series.</p>';
+    else {
+      Promise.all(rows.slice(0, 6).map(r => REI.area(key, r.code).catch(() => null))).then(areas => {
+        const cmp = areas.filter(a => a && a.index).map((a, i) => ({ period: monthly ? a.index.period : a.index.period.map(q2m), value: a.index.value, name: a.name, color: ['#3987e5', '#d95926', '#199e70', '#c98500', '#8b949e', '#b62324'][i] }));
+        REI.charts.index(document.getElementById('c-rent'), { period: monthly ? s.index.period : s.index.period.map(q2m), value: s.index.value, se: [] }, null, { base: s.base_period, name: s.name, compare: cmp });
+      });
+    }
     document.getElementById('attribution').textContent = s.attribution;
   }
 
@@ -123,11 +137,11 @@
     if (s.tier === 'B') {
       app.innerHTML = `<div class="crumbs"><a href="#/">Cities</a> › <a href="#/city/${key}">${esc(s.name)}</a> › ${esc(a.name)}</div>
         <div class="city-head"><h1>${esc(a.name)}</h1><span class="asof"><span class="badge">${esc(a.parent ? a.parent.name : '')}</span><span class="badge prov">${esc(a.basis || s.basis)}</span></span></div>
-        <div class="tiles"><div class="tile"><div class="k">Asking USD/m²</div><div class="v">${a.psm12 == null ? '–' : '$' + Math.round(a.psm12).toLocaleString('en-US')}</div><div class="s">latest quarter</div></div>
+        <div class="tiles">${a.psm12 != null ? `<div class="tile"><div class="k">Asking USD/m²</div><div class="v">$${Math.round(a.psm12).toLocaleString('en-US')}</div><div class="s">latest quarter</div></div>` : ''}
           ${a.changes ? [['12 months', a.changes.m12], ['5 years', a.changes.y5]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v ${v == null ? '' : v >= 0 ? 'up' : 'down'}">${fmt.pct(v)}</div></div>`).join('') : ''}</div>
-        <div class="card"><h2>Asking price per m² vs ${esc(s.name)}</h2><div id="a-index" class="chart"></div></div>`;
-      const q2m = p => p.replace(/Q(\d)$/, (m, q) => `-${(q * 3).toString().padStart(2, '0')}`);
-      if (a.index) REI.charts.index(document.getElementById('a-index'), { period: a.index.period.map(q2m), value: a.index.value, se: [] }, null, { base: a.index.period[0], name: a.name, compare: [{ period: s.index.period.map(q2m), value: s.index.value, name: s.name }] });
+        <div class="card"><h2>${a.psm12 != null ? 'Asking price per m²' : 'Index'} vs ${esc(s.name)}</h2><div id="a-index" class="chart"></div></div>`;
+      const mon = s.freq === 'M';
+      if (a.index) REI.charts.index(document.getElementById('a-index'), { period: mon ? a.index.period : a.index.period.map(q2m), value: a.index.value, se: [] }, null, { base: a.index.period[0], name: a.name, compare: [{ period: mon ? s.index.period : s.index.period.map(q2m), value: s.index.value, name: s.name }] });
       document.getElementById('attribution').textContent = s.attribution;
       return;
     }
